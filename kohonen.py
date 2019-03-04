@@ -5,26 +5,61 @@ CISC 452 Neural and Genetic Computing
 Description: This file implements a Kohonen network for two clusters
 Required Libraries:
     Numpy -> pip install numpy
-    math
     sklearn -> pip install scikit-learn
+    math
 '''
 
 import numpy as np
 import math
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
 
-def main(relFilePath, hasColumnLabel, clusterCount):
-  data = readData(relFilePath, hasColumnLabel)
-  network = initializeNetwork(data, clusterCount)
-  network = train(data, network, 1) # data, network, epochs
-  # data = normalize(data)
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib import cm
 
-# Reads the data from the relative file path and returns it as a numpy array
+def main(relFilePath, hasColumnLabel, clusterCount, epochs, learningRate, shouldVisualize):
+  data = readData(relFilePath, hasColumnLabel)
+  '''
+  Translating all data points into positive direction for maxnet.
+  Will translate back to original state later TODO
+  '''
+  data, translationApplied = translatePositive(data)
+  network = initializeNetwork(data, clusterCount)
+  network = train(data, network, epochs, learningRate)
+  centroids = network['feedforwardWeights']
+  centroids = np.transpose(centroids)
+  plotting(data, centroids)
+
+'''
+Reads the data from the relative file path and returns it as a numpy array
+'''
 def readData(relFilePath, hasColumnLabel):
   data = np.genfromtxt(relFilePath, delimiter=',')
   # Removing the column labels
   if (hasColumnLabel):
     data = data[1:, :]
+  # Randomizing the order
+  np.random.shuffle(data)
+  return data
+
+'''
+This function translates all datapoints into the positive number space so that maxnet
+can be applied properly.
+'''
+def translatePositive(data):
+  # need to increase all values in data by the minimum (if it is < 0)
+  minimum = np.amin(data)
+  if (minimum < 0):
+    translation = minimum*-1
+    data = np.add(translation, data)
+  return data, translation
+
+'''
+This function undoes the translation from translatePositive() so that data and clusters are represented
+as they were originally.
+'''
+def translateNegative(data, translation):
+  data = np.subtract(data, translation)
   return data
 
 '''
@@ -43,26 +78,45 @@ def initializeNetwork(data, clusterCount):
   minimum = np.amin(data)
   maximum = np.amax(data)
   # 3 rows, 2 columns for current dataset and clusterCount
-  feedForwardWeights = np.random.uniform(low=minimum, high=maximum, size=(data.shape[1], clusterCount))
+  feedforwardWeights = np.random.uniform(low=minimum*2, high=maximum*2, size=(data.shape[1], clusterCount))
   # 2 rows, 1 column: each output node has an inhibitory connecion
   recurrentWeights = np.full((clusterCount, 1), recurrentWeightValue)
   return {
-    'feedForwardWeights': feedForwardWeights,
+    'feedforwardWeights': feedforwardWeights,
     'recurrentWeights': recurrentWeights
     }
 
 '''
 Defines the training function which trains the weight vectors for the kohonen network
 '''
-def train(data, network, epochs):
+def train(data, network, epochs, learningRate):
   for epoch in range(epochs):
     for index, row, in enumerate(data):
-      feedForward(row, network)
-      # TODO apply learning rule
-      quit()
+      winningNodeIndex = feedForward(row, network)
+      # Don't really need to assign 'network =' here, but it is better for understanding
+      network = updateWeights(network, row, winningNodeIndex, learningRate)
+    print(str(round(epoch/epochs*100, 3)) + '% complete')
+    # TODO determine early stopping behaviour
+  return network
 
 '''
-Defines the maxnet function
+Defines the weight updating function
+'''
+def updateWeights(network, row, winningNodeIndex, learningRate):
+  # Creating an array to fill with weight deltas
+  deltaWeights = np.zeros(network['feedforwardWeights'].shape)
+  # Subtracting the winning node weights from the input
+  delta = np.subtract(row, network['feedforwardWeights'][:, winningNodeIndex])
+  # Applying the learning rate
+  deltaWeights[:, winningNodeIndex] = np.dot(learningRate, delta)
+  #print('deltaWeights \n', deltaWeights)
+  # Updating the weights
+  network['feedforwardWeights'] = np.add(network['feedforwardWeights'], deltaWeights)
+  return network
+
+'''
+Defines the maxnet function which applies inhibitory signals to all output nodes until
+a single winner is found.
 '''
 def maxnet(activations, network):
   # Creating empty numpy array to store new activations
@@ -80,32 +134,27 @@ Feeds forward a single data point and determines the winning cluster.
 That is, the cluster for which the data point resides
 '''
 def feedForward(data, network):
-  print('feeding forward')
-  print('\n data ', data)
-  print('\n network ', network['recurrentWeights'].shape)
   # Produces (2, 1) activations
-  # TODO reshape dynamically
-  activations = np.reshape(np.dot(data, network['feedForwardWeights']), (2, 1))
+  # Sum of weighted inputs for each output node. TODO reshape dynamically
+  activations = np.reshape(np.dot(data, network['feedforwardWeights']), (2, 1))
   # Loop until only one activation is non-zero
   while (int(np.count_nonzero(activations, axis=0)) > 1):
     activations = maxnet(activations, network)
-  print('activations \n', activations)
-  # TODO decode the winning node and return it
+  # Returns the index of the winning node
+  return int(np.nonzero(activations)[0])
 
 '''
-Defines the linear activation function (sum of weighted inputs)
+Helper function for visualizing data
 '''
-# '''
-# Normalizing all attributes to a range between 0 and 1 via max normalization.
-# This makes it so that each attribute is valued equally
-# '''
-# def normalize(data):
-#   # Don't want to normalize the class column
-#   dataToNormalize = data[:, :-1]
-#   classLabels = data[:, -1:]
-#   normalizedData = dataToNormalize / dataToNormalize.max(axis=0)
-#   normalizedData = np.concatenate((normalizedData, classLabels), axis=1)
-#   return normalizedData
+def plotting(data, centroids):
+  fig = plt.figure()
+  ax = Axes3D(fig)
+  ax.invert_xaxis()
+  # plot data
+  ax.plot(data[:,0], data[:,1], data[:,2], 'ok')
+  # plot centroids
+  ax.plot(centroids[:,0], centroids[:,1], centroids[:,2], 'ok', c=(0,1,0,1))
+  plt.show()
 
 def outputDesignAndPerformance(initialWeights, finalWeights, learningRate, momentum, hiddenLayers, nodesPerHiddenLayer, classCount, precisionAndRecallArray, confusionMatrixArray):
   text_file = open('DesignAndPerformance.txt', 'w')
@@ -127,6 +176,8 @@ Parameters are:
   String: relative file path to data,
   Boolean: if the data has column labels,
   Int: number of clusters
-
+  Int: epochs
+  Float: LearningRate
+  Boolean: if the cluster centers should be visualized
 '''
-main('dataset_noclass.csv', True, 2)
+main('dataset_noclass.csv', True, 2, 1000, 0.005, True)
