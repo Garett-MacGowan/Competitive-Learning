@@ -6,6 +6,7 @@ Description: This file implements a Kohonen network for two clusters
 Required Libraries:
     Numpy -> pip install numpy
     sklearn -> pip install scikit-learn
+    matplotlib -> pip install matplotlib
     math
 '''
 
@@ -25,10 +26,14 @@ def main(relFilePath, hasColumnLabel, clusterCount, epochs, learningRate, should
   '''
   data, translationApplied = translatePositive(data)
   network = initializeNetwork(data, clusterCount)
+  #plotting(data, np.transpose(network['feedforwardWeights']))
   network = train(data, network, epochs, learningRate)
-  centroids = network['feedforwardWeights']
-  centroids = np.transpose(centroids)
-  plotting(data, centroids)
+  # Assigning data to clusters
+  clusterA, clusterB = assignCluster(data, network)
+  if (shouldVisualize):
+    #print('network shape ', network['feedforwardWeights'].shape)
+    #plotting(data, np.transpose(network['feedforwardWeights']))
+    plotting(clusterA, clusterB)
 
 '''
 Reads the data from the relative file path and returns it as a numpy array
@@ -75,10 +80,10 @@ def initializeNetwork(data, clusterCount):
   Finding the minimum and maximum values in the dataset so that the weights that represent
   my centroids are within an appropriate range.
   '''
-  minimum = np.amin(data)
   maximum = np.amax(data)
   # 3 rows, 2 columns for current dataset and clusterCount
-  feedforwardWeights = np.random.uniform(low=minimum*2, high=maximum*2, size=(data.shape[1], clusterCount))
+  # TODO consider changing weights to be generated with each axis range in mind
+  feedforwardWeights = np.random.uniform(low=maximum*0.5, high=maximum*0.8, size=(data.shape[1], clusterCount))
   # 2 rows, 1 column: each output node has an inhibitory connecion
   recurrentWeights = np.full((clusterCount, 1), recurrentWeightValue)
   return {
@@ -90,14 +95,42 @@ def initializeNetwork(data, clusterCount):
 Defines the training function which trains the weight vectors for the kohonen network
 '''
 def train(data, network, epochs, learningRate):
+  # learningModifier is used to decrease learning rate over time
+  learningModifier = 1
+  currentTotalActivations = 0
+  previousTotalActivations = 0
   for epoch in range(epochs):
     for index, row, in enumerate(data):
-      winningNodeIndex = feedForward(row, network)
+      winningNodeIndex, activations = feedForward(row, network)
+      currentTotalActivations += np.sum(activations)
       # Don't really need to assign 'network =' here, but it is better for understanding
-      network = updateWeights(network, row, winningNodeIndex, learningRate)
-    print(str(round(epoch/epochs*100, 3)) + '% complete')
+      network = updateWeights(network, row, winningNodeIndex, learningRate*(1/learningModifier))
+    if (((epoch + 1) % (epochs/8)) == 0):
+      print(str(round(epoch/epochs*100, 3)) + '% complete')
+      learningModifier += 1
     # TODO determine early stopping behaviour
+    #Early stop if the total activations decrease (convergence)
+    print('currentTotalActivations \n ', currentTotalActivations)
+    print('previousTotalActivations \n ', previousTotalActivations)
+    if (currentTotalActivations < previousTotalActivations):
+      break
+    previousTotalActivations = currentTotalActivations
+    currentTotalActivations = 0
   return network
+
+'''
+Defines the function which generates the final clustering
+'''
+def assignCluster(data, network):
+  clusterA = np.empty((0, data.shape[1]))
+  clusterB = np.empty((0, data.shape[1]))
+  for index, row, in enumerate(data):
+    winningNodeIndex, activations = feedForward(row, network)
+    if (winningNodeIndex == 0):
+      clusterA = np.append(clusterA, [row], axis=0)
+    else:
+      clusterB = np.append(clusterB, [row], axis=0)
+  return clusterA, clusterB
 
 '''
 Defines the weight updating function
@@ -109,7 +142,6 @@ def updateWeights(network, row, winningNodeIndex, learningRate):
   delta = np.subtract(row, network['feedforwardWeights'][:, winningNodeIndex])
   # Applying the learning rate
   deltaWeights[:, winningNodeIndex] = np.dot(learningRate, delta)
-  #print('deltaWeights \n', deltaWeights)
   # Updating the weights
   network['feedforwardWeights'] = np.add(network['feedforwardWeights'], deltaWeights)
   return network
@@ -141,19 +173,19 @@ def feedForward(data, network):
   while (int(np.count_nonzero(activations, axis=0)) > 1):
     activations = maxnet(activations, network)
   # Returns the index of the winning node
-  return int(np.nonzero(activations)[0])
+  return int(np.nonzero(activations)[0]), activations
 
 '''
 Helper function for visualizing data
 '''
-def plotting(data, centroids):
+def plotting(dataA, dataB):
   fig = plt.figure()
   ax = Axes3D(fig)
   ax.invert_xaxis()
   # plot data
-  ax.plot(data[:,0], data[:,1], data[:,2], 'ok')
-  # plot centroids
-  ax.plot(centroids[:,0], centroids[:,1], centroids[:,2], 'ok', c=(0,1,0,1))
+  ax.plot(dataA[:,0], dataA[:,1], dataA[:,2], 'ok', c=(0,0,0,1))
+  # plot dataB
+  ax.plot(dataB[:,0], dataB[:,1], dataB[:,2], 'ok', c=(0,1,0,1))
   plt.show()
 
 def outputDesignAndPerformance(initialWeights, finalWeights, learningRate, momentum, hiddenLayers, nodesPerHiddenLayer, classCount, precisionAndRecallArray, confusionMatrixArray):
@@ -180,4 +212,4 @@ Parameters are:
   Float: LearningRate
   Boolean: if the cluster centers should be visualized
 '''
-main('dataset_noclass.csv', True, 2, 1000, 0.005, True)
+main('dataset_noclass.csv', True, 2, 2000, 0.01, True)
