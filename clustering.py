@@ -2,7 +2,12 @@
 Author: Garett MacGowan
 Student Number: 10197107
 CISC 452 Neural and Genetic Computing
-Description: This file implements a Kohonen network for two clusters
+Description:
+  This file implements a simple competitive network for clustering using maxnet
+  and dot product as a similarity measure. Note that a Euclidean feedforward
+  function is present but not used. It can be swapped out for testing purposes.
+  Execution parameters are listed at the bottom of this file. I have implemented
+  a matplotlib visualization function so that the resulting clusters can be seen.
 Required Libraries:
     Numpy -> pip install numpy
     sklearn -> pip install scikit-learn
@@ -15,23 +20,27 @@ import numpy as np
 import math
 import random
 from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
+# The import below is for extra testing purposes
+from sklearn.datasets.samples_generator import make_blobs
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 def main(relFilePath, hasColumnLabel, clusterCount, epochs, learningRate, shouldVisualize):
   data = readData(relFilePath, hasColumnLabel)
-  '''
-  Translating all data points into positive direction for maxnet.
-  Will translate back to original state later TODO
-  '''
-  data, translationApplied = translatePositive(data)
+  # The commented out code below is for an alternate dataset for testing
+  # data, y = make_blobs(n_samples=1000, centers=2, n_features=3, random_state=2)
+  # Subtracting means so I can take use dot product as my similarity metric.
+  data, columnMeans = subtractMeans(data)
   network = initializeNetwork(data, clusterCount)
+  initialCentroids = np.copy(network['feedforwardWeights'])
   network = train(data, network, epochs, learningRate)
+  # Adding means back into data
+  data, network, initialCentroids = addMeans(data, network, initialCentroids, columnMeans)
   # Assigning data to clusters
   clusters = assignCluster(data, network)
   if (shouldVisualize):
-    plotting(clusters, np.transpose(network['feedforwardWeights']))
+    plotting(clusters, np.transpose(network['feedforwardWeights']), np.transpose(initialCentroids))
 
 '''
 Reads the data from the relative file path and returns it as a numpy array
@@ -46,24 +55,22 @@ def readData(relFilePath, hasColumnLabel):
   return data
 
 '''
-This function translates all datapoints into the positive number space so that maxnet
-can be applied properly.
+This function centers the data about the origin. It is necessary for dot product similarity
 '''
-def translatePositive(data):
-  # Need to increase all values in data by the minimum (if it is < 0)
-  minimum = np.amin(data)
-  if (minimum < 0):
-    translation = minimum*-1
-    data = np.add(translation, data)
-  return data, translation
+def subtractMeans(data):
+  columnMeans = np.mean(data, axis=0)
+  data = np.subtract(data, columnMeans)
+  return data, columnMeans
 
 '''
-This function undoes the translation from translatePositive() so that data and clusters are represented
-as they were originally.
+This function adds the means back into the data
 '''
-def translateNegative(data, translation):
-  data = np.subtract(data, translation)
-  return data
+def addMeans(data, network, initialCentroids, columnMeans):
+  data = np.add(data, columnMeans)
+  meansToAdd = np.full(network['feedforwardWeights'].shape, np.reshape(columnMeans, (columnMeans.shape[0],1)))
+  network['feedforwardWeights'] = np.add(network['feedforwardWeights'], meansToAdd)
+  initialCentroids = np.add(initialCentroids, meansToAdd)
+  return data, network, initialCentroids
 
 '''
 Initializing the network:
@@ -79,8 +86,9 @@ def initializeNetwork(data, clusterCount):
   my centroids are within an appropriate range.
   '''
   maximum = np.amax(data)
+  minimim = np.amin(data)
   # 3 rows, 2 columns for current dataset and clusterCount
-  feedforwardWeights = np.random.uniform(low=maximum*0.4, high=maximum*0.6, size=(data.shape[1], clusterCount))
+  feedforwardWeights = np.random.uniform(low=minimim*0.5, high=maximum*0.5, size=(data.shape[1], clusterCount))
   # 2 rows, 1 column: each output node has an inhibitory connecion
   recurrentWeights = np.full((clusterCount, 1), recurrentWeightValue)
   return {
@@ -94,25 +102,24 @@ Defines the training function which trains the weight vectors for the kohonen ne
 def train(data, network, epochs, learningRate):
   # learningModifier is used to decrease learning rate over time
   learningModifier = 1
-  #currentTotalActivations = 0
-  #previousTotalActivations = 0
+  previousIterTotalDelta = math.inf
   for epoch in range(epochs):
+    # totalDelta is used to detect convergence
+    totalDelta = 0
     for index, row, in enumerate(data):
-      winningNodeIndex, activations = feedForward(row, network)
-      #currentTotalActivations += np.sum(activations)
-      # Don't really need to assign 'network =' here, but it is better for understanding
-      network = updateWeights(network, row, winningNodeIndex, learningRate*(1/learningModifier))
+      winningNodeIndex, activations = feedForward_dotProd(row, network)
+      # currentTotalActivations += np.sum(activations)
+      network, deltaWeights = updateWeights(network, row, winningNodeIndex, learningRate*(1/learningModifier))
+      # Check if the delta is passed the threshold
+      totalDelta += abs(np.sum(deltaWeights))
+    # Early stopping behaviour (when the weights stop changing the division rounds to 1)
+    if (previousIterTotalDelta / totalDelta == 1):
+      print('stopped early, the centroids stopped moving!')
+      break
+    previousIterTotalDelta = totalDelta
     if (((epoch + 1) % (epochs/10)) == 0):
       print(str(round(epoch/epochs*100, 3)) + '% complete')
       learningModifier += 1
-    # TODO determine early stopping behaviour
-    #Early stop if the total activations decrease (convergence)
-    #print('currentTotalActivations \n ', currentTotalActivations)
-    #print('previousTotalActivations \n ', previousTotalActivations)
-    #if (currentTotalActivations < previousTotalActivations):
-    #  break
-    #previousTotalActivations = currentTotalActivations
-    #currentTotalActivations = 0
   return network
 
 '''
@@ -127,17 +134,20 @@ def updateWeights(network, row, winningNodeIndex, learningRate):
   deltaWeights[:, winningNodeIndex] = np.dot(learningRate, delta)
   # Updating the weights
   network['feedforwardWeights'] = np.add(network['feedforwardWeights'], deltaWeights)
-  return network
+  return network, deltaWeights
 
 '''
 Defines the function which generates the final clustering
 '''
 def assignCluster(data, network):
   clusters = []
+  # Create a cluster for every output neuron
   for _ in range(network['feedforwardWeights'].shape[1]):
     clusters.append(np.empty((0, data.shape[1])))
   for index, row, in enumerate(data):
-    winningNodeIndex, activations = feedForward(row, network)
+    winningNodeIndex, activations = feedForward_dotProd(row, network)
+    if (winningNodeIndex == None):
+      continue
     clusters[winningNodeIndex] = np.append(clusters[winningNodeIndex], [row], axis=0)
   return clusters
 
@@ -160,32 +170,66 @@ def maxnet(activations, network):
 Feeds forward a single data point and determines the winning cluster.
 That is, the cluster for which the data point resides
 '''
-def feedForward(data, network):
+def feedForward_dotProd(data, network):
   # Produces (2, 1) activations
   activations = np.reshape(np.dot(data, network['feedforwardWeights']), (network['feedforwardWeights'].shape[1], 1))
-  temp = np.copy(activations)
   # Loop until only one activation is non-zero
   while (int(np.count_nonzero(activations, axis=0)) > 1):
     activations = maxnet(activations, network)
   # Returns the index of the winning node
-  return int(np.nonzero(activations)[0]), activations
+  nonzeros = np.nonzero(activations)[0]
+  # Tiebreaking
+  if (nonzeros.shape[0] == 0):
+    nonzero = random.randint(0, network['feedforwardWeights'].shape[1]-1)
+  else:
+    nonzero = int(nonzeros)
+  return nonzero, activations
 
 '''
-Helper function for visualizing data
+This function is not currently in use.
+It is here solely for testing purposes
 '''
-def plotting(data, centroids):
+def feedForward_euclidean(data, network):
+  # Creating empty activations to be filled with Euclidean distance
+  activations = np.empty((0, network['feedforwardWeights'].shape[1]))
+  # Calculating squared Euclidean distance between vectors
+  for index in range(0, network['feedforwardWeights'].shape[1]):
+    # Distance between two vectors is the length of the difference vectors
+    differenceVector = np.subtract(data, network['feedforwardWeights'][:,index])
+    distance = np.dot(differenceVector, differenceVector)
+    activations = np.append(activations, distance)
+  while (int(np.count_nonzero(activations, axis=0)) > 1):
+    activations = maxnet(activations, network)
+  # Returns the index of the winning node
+  nonzeros = np.nonzero(activations)[0]
+  # Tiebreaking
+  if (nonzeros.shape[0] == 0):
+    nonzero = random.randint(0, network['feedforwardWeights'].shape[1]-1)
+  else:
+    nonzero = int(nonzeros)
+  return nonzero, activations
+  
+
+'''
+Helper function for visualizing data. Initial centroids are black circles
+and final centroids are black stars. Clusters are randomly coloured.
+'''
+def plotting(data, centroids, initialCentroids):
   fig = plt.figure()
   ax = Axes3D(fig)
   for index in range(len(data)):
     i = index + 1
     if (data[index].shape[0] > 0):
-      ax.plot(data[index][:,0], data[index][:,1], data[index][:,2], 'ok', c=(random.uniform(0, 1),random.uniform(0, 1),random.uniform(0, 1),1))
-  # Centroids are blue
+      ax.plot(data[index][:,0], data[index][:,1], data[index][:,2], 'o', c=(random.uniform(0, 1),random.uniform(0, 1),random.uniform(0, 1),1))
+  # Initial centroids are black circles
+  if (initialCentroids.shape[0] > 0):
+    ax.plot(initialCentroids[:,0], initialCentroids[:,1], initialCentroids[:,2], 'o', c=(0,0,0,1))
+  # Centroids are black stars
   if (centroids.shape[0] > 0):
-    ax.plot(centroids[:,0], centroids[:,1], centroids[:,2], 'ok', c=(0,0,1,1))
+    ax.plot(centroids[:,0], centroids[:,1], centroids[:,2], '*', c=(0,0,0,1))
   plt.show()
 
-def outputDesignAndPerformance(initialWeights, finalWeights, learningRate, momentum, hiddenLayers, nodesPerHiddenLayer, classCount, precisionAndRecallArray, confusionMatrixArray):
+def outputDesignAndPerformance(initialWeights, finalWeights, learningRate,):
   text_file = open('DesignAndPerformance.txt', 'w')
   text_file.write('Author: Garett MacGowan \n')
   text_file.write('Student Number: 10197107 \n')
@@ -200,6 +244,13 @@ def outputDesignAndPerformance(initialWeights, finalWeights, learningRate, momen
   text_file.write('\n')
   text_file.close()
 
+def outputClustering(clusters):
+  text_file = open('clusters.txt', 'w')
+  text_file.write('Author: Garett MacGowan \n')
+  text_file.write('Student Number: 10197107 \n')
+  text_file.write('\n')
+  text_file.close()
+
 '''
 Parameters are:
   String: relative file path to data,
@@ -209,4 +260,4 @@ Parameters are:
   Float: LearningRate
   Boolean: if the cluster centers should be visualized
 '''
-main('dataset_noclass.csv', True, 2, 1, 0.001, True)
+main('dataset_noclass.csv', True, 2, 1000, 0.01, True)
