@@ -7,7 +7,9 @@ Description:
   and dot product as a similarity measure. Note that a Euclidean feedforward
   function is present but not used. It can be swapped out for testing purposes.
 
-  It also implements a simple K-Means network for clustering.
+  It also implements a simple K-Means clustering network. Every component for the
+  simple competitive network and k-means network are the same except for the training
+  algorithm.
 
   Execution parameters are listed at the bottom of this file. I have implemented
   a matplotlib visualization function so that the resulting clusters can be seen.
@@ -34,7 +36,7 @@ def main(relFilePath, hasColumnLabel, clusterCount, epochs, learningRate, should
   data = readData(relFilePath, hasColumnLabel, True)
   # The commented out code below is for an alternate dataset for testing
   # data, y = make_blobs(n_samples=1000, centers=2, n_features=3, random_state=2)
-  # Subtracting means so I can take use dot product as my similarity metric.
+  # Subtracting means so I can use dot product as my similarity metric.
   data, columnMeans = subtractMeans(data)
   network = initializeNetwork(data, clusterCount)
   initialCentroids = np.copy(network['feedforwardWeights'])
@@ -70,7 +72,7 @@ def main(relFilePath, hasColumnLabel, clusterCount, epochs, learningRate, should
     plotting(clustersKMeans, np.transpose(networkKMeans['feedforwardWeights']), np.transpose(initialCentroids))
 
 '''
-Reads the data from the relative file path and returns it as a numpy array
+Reads the data from the relative file path and returns it as a numpy array.
 '''
 def readData(relFilePath, hasColumnLabel, shuffle):
   data = np.genfromtxt(relFilePath, delimiter=',')
@@ -84,6 +86,7 @@ def readData(relFilePath, hasColumnLabel, shuffle):
 
 '''
 This function centers the data about the origin. It is necessary for dot product similarity
+to work well.
 '''
 def subtractMeans(data):
   columnMeans = np.mean(data, axis=0)
@@ -91,7 +94,7 @@ def subtractMeans(data):
   return data, columnMeans
 
 '''
-This function adds the means back into the data
+This function adds the means back into the data.
 '''
 def addMeans(data, network, networkKMeans, initialCentroids, columnMeans):
   data = np.add(data, columnMeans)
@@ -103,9 +106,9 @@ def addMeans(data, network, networkKMeans, initialCentroids, columnMeans):
 
 '''
 Initializing the network:
-  The cluster count represents the number of output nodes
-  Each input in the input layer is fully connected with the output nodes
-  Each output node will have inhibitory connections with other output nodes using a maxnet
+  The cluster count represents the number of output nodes.
+  Each input in the input layer is fully connected with the output nodes.
+  Each output node will have inhibitory connections with other output nodes using a maxnet.
 '''
 def initializeNetwork(data, clusterCount):
   # The weight value for the inhibitory conenctions
@@ -127,7 +130,7 @@ def initializeNetwork(data, clusterCount):
 
 '''
 Defines the training function which trains the weight vectors for the
-basic clustering network
+basic clustering network.
 '''
 def train(data, network, epochs, learningRate):
   print('Training simple competitive network')
@@ -140,9 +143,8 @@ def train(data, network, epochs, learningRate):
     for index, row, in enumerate(data):
       winningNodeIndex = feedForward_dotProd(row, network)
       network, deltaWeights = updateWeights(network, row, winningNodeIndex, learningRate*(1/learningModifier))
-      # Check if the delta is passed the threshold
       totalDelta += abs(np.sum(deltaWeights))
-    # Early stopping behaviour (when the weights stop changing the division rounds to 1)
+    # Early stopping behaviour (when the weights stop changing significantly, the division rounds to 1)
     if (previousIterTotalDelta / totalDelta == 1):
       print('Stopped early, the centroids stopped moving!')
       break
@@ -154,7 +156,7 @@ def train(data, network, epochs, learningRate):
 
 '''
 Defines the training function which trains the weight vectors for
-the K-Means clustering network
+the K-Means clustering network.
 '''
 def trainKMeans(data, network, epochs):
   print('Training k-means network')
@@ -178,7 +180,7 @@ def trainKMeans(data, network, epochs):
   return network
 
 '''
-Defines the weight updating function
+Defines the weight updating function.
 '''
 def updateWeights(network, row, winningNodeIndex, learningRate):
   # Creating an array to fill with weight deltas
@@ -192,7 +194,7 @@ def updateWeights(network, row, winningNodeIndex, learningRate):
   return network, deltaWeights
 
 '''
-Defines the function which generates the final clustering used in visualization
+Defines the function which generates the final clustering used in visualization.
 '''
 def assignCluster(data, network):
   clusters = []
@@ -207,7 +209,7 @@ def assignCluster(data, network):
   return clusters
 
 '''
-Defines the function which replaces data with cluster labels
+Defines the function which replaces data with cluster labels for the output file.
 '''
 def clusterLabels(data, network):
   # Create a numpy array for assigning clusterings
@@ -253,7 +255,8 @@ def feedForward_dotProd(data, network):
 
 '''
 This function is not currently in use.
-It is here solely for testing purposes
+It is here solely for testing purposes. It implements euclidean distance
+as a difference metric for finding cluster ownership.
 '''
 def feedForward_euclidean(data, network):
   # Creating empty activations to be filled with Euclidean distance
@@ -276,7 +279,7 @@ def feedForward_euclidean(data, network):
   return nonzero
   
 '''
-This function returns the cluster errors for each cluster
+This function returns the cluster errors for each cluster.
 '''
 def clusterError(clusters, network):
   # Create an error for each cluster initialized to zero
