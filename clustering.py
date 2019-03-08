@@ -6,6 +6,9 @@ Description:
   This file implements a simple competitive network for clustering using maxnet
   and dot product as a similarity measure. Note that a Euclidean feedforward
   function is present but not used. It can be swapped out for testing purposes.
+
+  It also implements a simple KNN network for clustering.
+
   Execution parameters are listed at the bottom of this file. I have implemented
   a matplotlib visualization function so that the resulting clusters can be seen.
 Required Libraries:
@@ -19,7 +22,6 @@ Required Libraries:
 import numpy as np
 import math
 import random
-from sklearn.metrics import confusion_matrix, precision_recall_fscore_support
 # The import below is for extra testing purposes
 from sklearn.datasets.samples_generator import make_blobs
 
@@ -107,8 +109,7 @@ def train(data, network, epochs, learningRate):
     # totalDelta is used to detect convergence
     totalDelta = 0
     for index, row, in enumerate(data):
-      winningNodeIndex, activations = feedForward_dotProd(row, network)
-      # currentTotalActivations += np.sum(activations)
+      winningNodeIndex = feedForward_dotProd(row, network)
       network, deltaWeights = updateWeights(network, row, winningNodeIndex, learningRate*(1/learningModifier))
       # Check if the delta is passed the threshold
       totalDelta += abs(np.sum(deltaWeights))
@@ -145,7 +146,7 @@ def assignCluster(data, network):
   for _ in range(network['feedforwardWeights'].shape[1]):
     clusters.append(np.empty((0, data.shape[1])))
   for index, row, in enumerate(data):
-    winningNodeIndex, activations = feedForward_dotProd(row, network)
+    winningNodeIndex = feedForward_dotProd(row, network)
     if (winningNodeIndex == None):
       continue
     clusters[winningNodeIndex] = np.append(clusters[winningNodeIndex], [row], axis=0)
@@ -183,7 +184,7 @@ def feedForward_dotProd(data, network):
     nonzero = random.randint(0, network['feedforwardWeights'].shape[1]-1)
   else:
     nonzero = int(nonzeros)
-  return nonzero, activations
+  return nonzero
 
 '''
 This function is not currently in use.
@@ -207,7 +208,7 @@ def feedForward_euclidean(data, network):
     nonzero = random.randint(0, network['feedforwardWeights'].shape[1]-1)
   else:
     nonzero = int(nonzeros)
-  return nonzero, activations
+  return nonzero
   
 
 '''
@@ -229,7 +230,7 @@ def plotting(data, centroids, initialCentroids):
     ax.plot(centroids[:,0], centroids[:,1], centroids[:,2], '*', c=(0,0,0,1))
   plt.show()
 
-def outputDesignAndPerformance(initialWeights, finalWeights, learningRate,):
+def outputDesignAndPerformance(initialWeights, finalWeights, learningRate):
   text_file = open('DesignAndPerformance.txt', 'w')
   text_file.write('Author: Garett MacGowan \n')
   text_file.write('Student Number: 10197107 \n')
