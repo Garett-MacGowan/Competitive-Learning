@@ -7,7 +7,7 @@ Description:
   and dot product as a similarity measure. Note that a Euclidean feedforward
   function is present but not used. It can be swapped out for testing purposes.
 
-  It also implements a simple KNN network for clustering.
+  It also implements a simple K-Means network for clustering.
 
   Execution parameters are listed at the bottom of this file. I have implemented
   a matplotlib visualization function so that the resulting clusters can be seen.
@@ -22,6 +22,8 @@ Required Libraries:
 import numpy as np
 import math
 import random
+import copy
+import time # TODO remove
 # The import below is for extra testing purposes
 from sklearn.datasets.samples_generator import make_blobs
 
@@ -36,13 +38,20 @@ def main(relFilePath, hasColumnLabel, clusterCount, epochs, learningRate, should
   data, columnMeans = subtractMeans(data)
   network = initializeNetwork(data, clusterCount)
   initialCentroids = np.copy(network['feedforwardWeights'])
-  network = train(data, network, epochs, learningRate)
+
+  # Training the simple competitive network (non k-means)
+  network = train(data, copy.deepcopy(network), epochs, learningRate)
+  # Training k-means
+  networkKMeans = trainKMeans(data, copy.deepcopy(network), epochs)
+
   # Adding means back into data
-  data, network, initialCentroids = addMeans(data, network, initialCentroids, columnMeans)
+  data, network, networkKMeans, initialCentroids = addMeans(data, network, networkKMeans, initialCentroids, columnMeans)
   # Assigning data to clusters
   clusters = assignCluster(data, network)
+  clustersKMeans = assignCluster(data, networkKMeans)
   if (shouldVisualize):
     plotting(clusters, np.transpose(network['feedforwardWeights']), np.transpose(initialCentroids))
+    plotting(clustersKMeans, np.transpose(networkKMeans['feedforwardWeights']), np.transpose(initialCentroids))
 
 '''
 Reads the data from the relative file path and returns it as a numpy array
@@ -67,12 +76,13 @@ def subtractMeans(data):
 '''
 This function adds the means back into the data
 '''
-def addMeans(data, network, initialCentroids, columnMeans):
+def addMeans(data, network, networkKMeans, initialCentroids, columnMeans):
   data = np.add(data, columnMeans)
   meansToAdd = np.full(network['feedforwardWeights'].shape, np.reshape(columnMeans, (columnMeans.shape[0],1)))
   network['feedforwardWeights'] = np.add(network['feedforwardWeights'], meansToAdd)
+  networkKMeans['feedforwardWeights'] = np.add(networkKMeans['feedforwardWeights'], meansToAdd)
   initialCentroids = np.add(initialCentroids, meansToAdd)
-  return data, network, initialCentroids
+  return data, network, networkKMeans, initialCentroids
 
 '''
 Initializing the network:
@@ -99,9 +109,11 @@ def initializeNetwork(data, clusterCount):
     }
 
 '''
-Defines the training function which trains the weight vectors for the kohonen network
+Defines the training function which trains the weight vectors for the
+basic clustering network
 '''
 def train(data, network, epochs, learningRate):
+  print('Training simple competitive network')
   # learningModifier is used to decrease learning rate over time
   learningModifier = 1
   previousIterTotalDelta = math.inf
@@ -115,12 +127,37 @@ def train(data, network, epochs, learningRate):
       totalDelta += abs(np.sum(deltaWeights))
     # Early stopping behaviour (when the weights stop changing the division rounds to 1)
     if (previousIterTotalDelta / totalDelta == 1):
-      print('stopped early, the centroids stopped moving!')
+      print('Stopped early, the centroids stopped moving!')
       break
     previousIterTotalDelta = totalDelta
     if (((epoch + 1) % (epochs/10)) == 0):
       print(str(round(epoch/epochs*100, 3)) + '% complete')
       learningModifier += 1
+  return network
+
+'''
+Defines the training function which trains the weight vectors for
+the K-Means clustering network
+'''
+def trainKMeans(data, network, epochs):
+  print('Training k-means network')
+  previousError = math.inf
+  for epoch in range(epochs):
+    clusters = assignCluster(data, network)
+    # Compute error for early stopping
+    totalError = np.sum(clusterError(clusters, network))
+    # Early stopping when the error is no longer decreasing
+    if (not(totalError < previousError)):
+      print('Stopped early, the error stopped decreasing!')
+      break
+    previousError = totalError
+    # Find the mean vector of each cluster
+    for index in range(len(clusters)):
+      clusterMean = np.mean(clusters[index], axis=0)
+      # Moving the cluster centroid to the cluster mean
+      network['feedforwardWeights'][:,index] = clusterMean
+    if (((epoch + 1) % (epochs/10)) == 0):
+      print(str(round(epoch/epochs*100, 3)) + '% complete K-Means')
   return network
 
 '''
@@ -210,7 +247,20 @@ def feedForward_euclidean(data, network):
     nonzero = int(nonzeros)
   return nonzero
   
-
+'''
+This function returns the cluster errors for each cluster
+'''
+def clusterError(clusters, network):
+  # Create an error for each cluster initialized to zero
+  errors = np.zeros((len(clusters)))
+  for index in range(0, len(clusters)):
+    for ind, cluster in enumerate(clusters[index]):
+      # The distance between two vectors is the length of the difference vectors
+      differenceVector = np.subtract(cluster, network['feedforwardWeights'][:,index])
+      squaredDistance = np.dot(differenceVector, differenceVector)**2
+      errors[index] += squaredDistance
+  return errors
+    
 '''
 Helper function for visualizing data. Initial centroids are black circles
 and final centroids are black stars. Clusters are randomly coloured.
@@ -234,6 +284,11 @@ def outputDesignAndPerformance(initialWeights, finalWeights, learningRate):
   text_file = open('DesignAndPerformance.txt', 'w')
   text_file.write('Author: Garett MacGowan \n')
   text_file.write('Student Number: 10197107 \n')
+  text_file.write('\n')
+  text_file.write('Required Libraries \n')
+  text_file.write('Numpy -> pip install numpy \n')
+  text_file.write('sklearn -> pip install scikit-learn \n')
+  text_file.write('matplotlib -> pip install matplotlib \n')
   text_file.write('\n')
   text_file.write('Initial weights: \n')
   for iw in list(initialWeights):
