@@ -1,0 +1,33 @@
+Author: Garett MacGowan 
+Student Number: 10197107 
+
+Required Libraries 
+Numpy -> pip install numpy 
+sklearn -> pip install scikit-learn 
+matplotlib -> pip install matplotlib 
+
+Initial centroids are the same for both networks 
+Initial centroids (each column is a centroid): 
+[[ 0.29073306 -0.01467882]
+ [-0.42188981  0.14394859]
+ [ 0.9062978   1.322721  ]]
+
+*** Simple Competitive Clustering *** 
+Final centroids (each column is a centroid): 
+[[ 1.2046428  -0.19430294]
+ [-0.08747693  0.57225644]
+ [ 0.41725685  0.59162686]]
+Cluster errors for each cluster 
+[1543.53518251  755.94285181]
+Total error: 
+2299.4780343265543
+
+*** K-Means Clustering *** 
+Final centroids (each column is a centroid): 
+[[ 1.21376914 -0.19535914]
+ [-0.08468027  0.57841385]
+ [ 0.41533018  0.5817694 ]]
+Cluster errors for each cluster 
+[1527.22517358  771.12299022]
+Total error: 
+2298.34816380179

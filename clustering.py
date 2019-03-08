@@ -17,13 +17,13 @@ Required Libraries:
     matplotlib -> pip install matplotlib
     math
     random
+    copy
 '''
 
 import numpy as np
 import math
 import random
 import copy
-import time # TODO remove
 # The import below is for extra testing purposes
 from sklearn.datasets.samples_generator import make_blobs
 
@@ -31,7 +31,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 def main(relFilePath, hasColumnLabel, clusterCount, epochs, learningRate, shouldVisualize):
-  data = readData(relFilePath, hasColumnLabel)
+  data = readData(relFilePath, hasColumnLabel, True)
   # The commented out code below is for an alternate dataset for testing
   # data, y = make_blobs(n_samples=1000, centers=2, n_features=3, random_state=2)
   # Subtracting means so I can take use dot product as my similarity metric.
@@ -49,6 +49,22 @@ def main(relFilePath, hasColumnLabel, clusterCount, epochs, learningRate, should
   # Assigning data to clusters
   clusters = assignCluster(data, network)
   clustersKMeans = assignCluster(data, networkKMeans)
+  
+  # Calculating cluster errors
+  clusterErrors = clusterError(clusters, network)
+  clusterErrorsKMeans = clusterError(clustersKMeans, networkKMeans)
+  
+  # Re-loading unshuffled data
+  data = readData(relFilePath, hasColumnLabel, False)
+
+  # Appending cluster labels to original data
+  simpleCompLabels = clusterLabels(copy.deepcopy(data), network)
+  kMeansLabels = clusterLabels(copy.deepcopy(data), network)
+
+  # Outputting results to file
+  outputDesignAndPerformance(network, networkKMeans, initialCentroids, clusterErrors, clusterErrorsKMeans)
+  outputClustering(simpleCompLabels, kMeansLabels)
+
   if (shouldVisualize):
     plotting(clusters, np.transpose(network['feedforwardWeights']), np.transpose(initialCentroids))
     plotting(clustersKMeans, np.transpose(networkKMeans['feedforwardWeights']), np.transpose(initialCentroids))
@@ -56,13 +72,14 @@ def main(relFilePath, hasColumnLabel, clusterCount, epochs, learningRate, should
 '''
 Reads the data from the relative file path and returns it as a numpy array
 '''
-def readData(relFilePath, hasColumnLabel):
+def readData(relFilePath, hasColumnLabel, shuffle):
   data = np.genfromtxt(relFilePath, delimiter=',')
   # Removing the column labels
   if (hasColumnLabel):
     data = data[1:, :]
   # Randomizing the order
-  np.random.shuffle(data)
+  if (shuffle):
+    np.random.shuffle(data)
   return data
 
 '''
@@ -175,7 +192,7 @@ def updateWeights(network, row, winningNodeIndex, learningRate):
   return network, deltaWeights
 
 '''
-Defines the function which generates the final clustering
+Defines the function which generates the final clustering used in visualization
 '''
 def assignCluster(data, network):
   clusters = []
@@ -188,6 +205,17 @@ def assignCluster(data, network):
       continue
     clusters[winningNodeIndex] = np.append(clusters[winningNodeIndex], [row], axis=0)
   return clusters
+
+'''
+Defines the function which replaces data with cluster labels
+'''
+def clusterLabels(data, network):
+  # Create a numpy array for assigning clusterings
+  clusterLabels = np.empty((0, 1))
+  for index, row, in enumerate(data):
+    winningNodeIndex = feedForward_dotProd(row, network)
+    clusterLabels = np.append(clusterLabels, np.array([winningNodeIndex]).reshape((1, 1)), axis=0)
+  return clusterLabels
 
 '''
 Defines the maxnet function which applies inhibitory signals to all output nodes until
@@ -280,7 +308,7 @@ def plotting(data, centroids, initialCentroids):
     ax.plot(centroids[:,0], centroids[:,1], centroids[:,2], '*', c=(0,0,0,1))
   plt.show()
 
-def outputDesignAndPerformance(initialWeights, finalWeights, learningRate):
+def outputDesignAndPerformance(network, networkKMeans, initialCentroids, clusterErrors, clusterErrorsKMeans):
   text_file = open('DesignAndPerformance.txt', 'w')
   text_file.write('Author: Garett MacGowan \n')
   text_file.write('Student Number: 10197107 \n')
@@ -290,21 +318,42 @@ def outputDesignAndPerformance(initialWeights, finalWeights, learningRate):
   text_file.write('sklearn -> pip install scikit-learn \n')
   text_file.write('matplotlib -> pip install matplotlib \n')
   text_file.write('\n')
-  text_file.write('Initial weights: \n')
-  for iw in list(initialWeights):
-    text_file.write(str(iw) + '\n')
+  text_file.write('Initial centroids are the same for both networks \n')
+  text_file.write('Initial centroids (each column is a centroid): \n')
+  text_file.write(str(initialCentroids) + '\n')
   text_file.write('\n')
-  text_file.write('Final weights: \n')
-  for fw in list(finalWeights):
-    text_file.write(str(fw) + '\n')
+  text_file.write('*** Simple Competitive Clustering *** \n')
+  text_file.write('Final centroids (each column is a centroid): \n')
+  text_file.write(str(network['feedforwardWeights']) + '\n')
+  text_file.write('Cluster errors for each cluster \n')
+  text_file.write(str(clusterErrors) + '\n')
+  text_file.write('Total error: \n')
+  text_file.write(str(np.sum(clusterErrors)) + '\n')
   text_file.write('\n')
+  text_file.write('*** K-Means Clustering *** \n')
+  text_file.write('Final centroids (each column is a centroid): \n')
+  text_file.write(str(networkKMeans['feedforwardWeights']) + '\n')
+  text_file.write('Cluster errors for each cluster \n')
+  text_file.write(str(clusterErrorsKMeans) +'\n')
+  text_file.write('Total error: \n')
+  text_file.write(str(np.sum(clusterErrorsKMeans)) + '\n')
   text_file.close()
 
-def outputClustering(clusters):
+def outputClustering(clusters, clustersKMeans):
   text_file = open('clusters.txt', 'w')
   text_file.write('Author: Garett MacGowan \n')
   text_file.write('Student Number: 10197107 \n')
-  text_file.write('\n')
+  text_file.write('*** Simple Competitive Clustering *** \n')
+  for item in clusters:
+    text_file.write(str(int(item)) + '\n')
+  text_file.close()
+
+  text_file = open('clustersKMeans.txt', 'w')
+  text_file.write('Author: Garett MacGowan \n')
+  text_file.write('Student Number: 10197107 \n')
+  text_file.write('*** K-Means Clustering *** \n')
+  for item in clustersKMeans:
+    text_file.write(str(int(item)) + '\n')
   text_file.close()
 
 '''
