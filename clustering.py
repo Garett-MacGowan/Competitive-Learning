@@ -288,8 +288,11 @@ def clusterError(clusters, network):
     for ind, cluster in enumerate(clusters[index]):
       # The distance between two vectors is the length of the difference vectors
       differenceVector = np.subtract(cluster, network['feedforwardWeights'][:,index])
-      squaredDistance = np.dot(differenceVector, differenceVector)**2
+      # Squared distance is the dot product of the difference vector and itself
+      squaredDistance = np.dot(differenceVector, differenceVector)
       errors[index] += squaredDistance
+    # Dividing by the number of items in the cluster
+    errors[index] /= clusters[index].shape[0]
   return errors
     
 '''
