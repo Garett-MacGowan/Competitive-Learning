@@ -36,6 +36,7 @@ def main(relFilePath, hasColumnLabel, clusterCount, epochs, learningRate, should
   data = readData(relFilePath, hasColumnLabel, True)
   # The commented out code below is for an alternate dataset for testing
   # data, y = make_blobs(n_samples=1000, centers=2, n_features=3, random_state=2)
+
   # Subtracting means so I can use dot product as my similarity metric.
   data, columnMeans = subtractMeans(data)
   network = initializeNetwork(data, clusterCount)
@@ -46,8 +47,11 @@ def main(relFilePath, hasColumnLabel, clusterCount, epochs, learningRate, should
   # Training k-means
   networkKMeans = trainKMeans(data, copy.deepcopy(network), epochs)
 
-  # Adding means back into data
-  data, network, networkKMeans, initialCentroids = addMeans(data, network, networkKMeans, initialCentroids, columnMeans)
+  # Re-loading unshuffled data
+  data = readData(relFilePath, hasColumnLabel, False)
+  # Subtracting means from unshuffled data
+  data, columnMeans = subtractMeans(data)
+
   # Assigning data to clusters
   clusters = assignCluster(data, network)
   clustersKMeans = assignCluster(data, networkKMeans)
@@ -55,14 +59,14 @@ def main(relFilePath, hasColumnLabel, clusterCount, epochs, learningRate, should
   # Calculating cluster errors
   clusterErrors = clusterError(clusters, network)
   clusterErrorsKMeans = clusterError(clustersKMeans, networkKMeans)
-  
-  # Re-loading unshuffled data
-  data = readData(relFilePath, hasColumnLabel, False)
 
-  # Appending cluster labels to original data
+  # Appending cluster labels to unshuffled data
   simpleCompLabels = clusterLabels(copy.deepcopy(data), network)
   kMeansLabels = clusterLabels(copy.deepcopy(data), network)
 
+  # Adding means back for consistent visualization and true representation
+  network, networkKMeans, clusters, clustersKMeans, initialCentroids = addMeans(network, networkKMeans, clusters, clustersKMeans, initialCentroids, columnMeans)
+  
   # Outputting results to file
   outputDesignAndPerformance(network, networkKMeans, initialCentroids, clusterErrors, clusterErrorsKMeans)
   outputClustering(simpleCompLabels, kMeansLabels)
@@ -93,16 +97,26 @@ def subtractMeans(data):
   data = np.subtract(data, columnMeans)
   return data, columnMeans
 
+def addMeansTest(network, columnMeans):
+  meansToAdd = np.full(network['feedforwardWeights'].shape, np.reshape(columnMeans, (columnMeans.shape[0], 1)))
+  network['feedforwardWeights'] = np.add(network['feedforwardWeights'], meansToAdd)
+  return network
+
 '''
 This function adds the means back into the data.
 '''
-def addMeans(data, network, networkKMeans, initialCentroids, columnMeans):
-  data = np.add(data, columnMeans)
+def addMeans(network, networkKMeans, clusters, clustersKMeans, initialCentroids, columnMeans):
+  # Adding means back into network weights
   meansToAdd = np.full(network['feedforwardWeights'].shape, np.reshape(columnMeans, (columnMeans.shape[0],1)))
   network['feedforwardWeights'] = np.add(network['feedforwardWeights'], meansToAdd)
   networkKMeans['feedforwardWeights'] = np.add(networkKMeans['feedforwardWeights'], meansToAdd)
   initialCentroids = np.add(initialCentroids, meansToAdd)
-  return data, network, networkKMeans, initialCentroids
+  # Adding means back into clusters
+  for index in range(len(clusters)):
+    clusters[index] = np.add(clusters[index], columnMeans)
+  for index in range(len(clustersKMeans)):
+    clustersKMeans[index] = np.add(clustersKMeans[index], columnMeans)
+  return network, networkKMeans, clusters, clustersKMeans, initialCentroids
 
 '''
 Initializing the network:
