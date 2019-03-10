@@ -8,26 +8,26 @@ matplotlib -> pip install matplotlib
 
 Initial centroids are the same for both networks 
 Initial centroids (each column is a centroid): 
-[[ 0.15517399  0.9437061 ]
- [-0.19437712  0.78031193]
- [ 0.59626912 -0.02251623]]
+[[-0.03721192 -0.08727161]
+ [ 1.18056323 -0.04878567]
+ [ 0.97143002  1.26135487]]
 
 *** Simple Competitive Clustering *** 
 Final centroids (each column is a centroid): 
-[[-0.20364384  1.21927279]
- [ 0.57271554 -0.07799572]
- [ 0.568153    0.42246844]]
+[[0.10941449 1.54587544]
+ [0.88769061 0.26781451]
+ [1.05337084 0.9634043 ]]
 Cluster errors for each cluster 
-[1.17292012 1.19012327]
+[1.07938318 1.29640958]
 Total error: 
-2.363043385295423
+2.3757927568282167
 
 *** K-Means Clustering *** 
 Final centroids (each column is a centroid): 
-[[-0.19558258  1.21687747]
- [ 0.57559178 -0.08309626]
- [ 0.57643026  0.42054757]]
+[[0.11078685 1.54769049]
+ [0.88832214 0.26510901]
+ [1.05592474 0.96499762]]
 Cluster errors for each cluster 
-[1.16859284 1.19450413]
+[1.08099966 1.2948754 ]
 Total error: 
-2.3630969759509686
+2.375875058923617

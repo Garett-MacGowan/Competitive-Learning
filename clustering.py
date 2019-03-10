@@ -94,7 +94,7 @@ to work well.
 '''
 def subtractMeans(data):
   columnMeans = np.mean(data, axis=0)
-  data = np.subtract(data, columnMeans)
+  np.subtract(data, columnMeans)
   return data, columnMeans
 
 def addMeansTest(network, columnMeans):
@@ -154,7 +154,7 @@ def train(data, network, epochs, learningRate):
   for epoch in range(epochs):
     # totalDelta is used to detect convergence
     totalDelta = 0
-    for index, row, in enumerate(data):
+    for row in data:
       winningNodeIndex = feedForward_dotProd(row, network)
       network, deltaWeights = updateWeights(network, row, winningNodeIndex, learningRate*(1/learningModifier))
       totalDelta += abs(np.sum(deltaWeights))
@@ -215,7 +215,7 @@ def assignCluster(data, network):
   # Create a cluster for every output neuron
   for _ in range(network['feedforwardWeights'].shape[1]):
     clusters.append(np.empty((0, data.shape[1])))
-  for index, row, in enumerate(data):
+  for row in data:
     winningNodeIndex = feedForward_dotProd(row, network)
     if (winningNodeIndex == None):
       continue
@@ -228,7 +228,7 @@ Defines the function which replaces data with cluster labels for the output file
 def clusterLabels(data, network):
   # Create a numpy array for assigning clusterings
   clusterLabels = np.empty((0, 1))
-  for index, row, in enumerate(data):
+  for row in data:
     winningNodeIndex = feedForward_dotProd(row, network)
     clusterLabels = np.append(clusterLabels, np.array([winningNodeIndex]).reshape((1, 1)), axis=0)
   return clusterLabels
